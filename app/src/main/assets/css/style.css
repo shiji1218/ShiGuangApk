@@ -467,6 +467,97 @@ main { padding: 0 1.25rem 1.25rem; }
 .note-text { cursor: pointer; }
 .note-time { font-size: 0.75rem; color: var(--ink-soft); margin-top: 0.25rem; }
 
+/* ---------- 图片选择与展示 ---------- */
+.img-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.img-thumb {
+  position: relative;
+  width: 4rem; height: 4rem;
+}
+.img-thumb img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  border: 1.5px solid var(--card-border);
+  cursor: pointer;
+}
+.img-x {
+  position: absolute;
+  top: -0.4rem; right: -0.4rem;
+  width: 1.25rem; height: 1.25rem;
+  font-size: 0.625rem;
+  color: #FFF6E8;
+  background: var(--ink);
+  border-radius: 50%;
+  line-height: 1;
+}
+.img-add {
+  width: 4rem; height: 4rem;
+  display: inline-flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  font-size: 1.25rem;
+  color: var(--ink-soft);
+  background: var(--paper);
+  border: 1.5px dashed var(--line);
+  border-radius: 0.5rem;
+}
+.img-add small { font-size: 0.625rem; margin-top: 0.1rem; }
+
+.img-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.375rem;
+  margin-top: 0.625rem;
+}
+.img-grid img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  border: 1.5px solid var(--card-border);
+  cursor: pointer;
+}
+.img-grid.small { grid-template-columns: repeat(4, 1fr); margin-top: 0.375rem; }
+
+.place {
+  margin-top: 0.375rem;
+  font-size: 0.875rem;
+  color: var(--sage);
+}
+
+/* 批注输入栏内部布局 */
+.input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  width: 100%;
+}
+#noteStrip { width: 100%; }
+#noteStrip .img-strip { padding-bottom: 0.375rem; }
+#noteEditStrip { margin-top: 0.375rem; }
+
+/* 全屏看图灯箱 */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1002;
+  background: rgba(40, 30, 20, .92);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  cursor: zoom-out;
+}
+.lightbox.show { display: flex; }
+.lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 0.5rem;
+}
+
 /* 批注行内编辑 */
 .note-edit {
   margin-top: 0;

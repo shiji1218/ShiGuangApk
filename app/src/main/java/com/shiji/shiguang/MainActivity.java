@@ -74,9 +74,15 @@ public class MainActivity extends Activity {
                 fileCallback = callback;
                 Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
                 intent.addCategory(Intent.CATEGORY_OPENABLE);
-                intent.setType("*/*");
+                String[] types = params.getAcceptTypes();
+                String type = (types != null && types.length > 0
+                        && types[0] != null && !types[0].isEmpty()) ? types[0] : "*/*";
+                intent.setType(type);
+                if (params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE) {
+                    intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                }
                 try {
-                    startActivityForResult(Intent.createChooser(intent, "选择备份文件"), REQ_FILE);
+                    startActivityForResult(Intent.createChooser(intent, "选择文件"), REQ_FILE);
                 } catch (Exception e) {
                     fileCallback = null;
                     return false;
@@ -155,8 +161,19 @@ public class MainActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQ_FILE && fileCallback != null) {
             Uri[] out = null;
-            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
-                out = new Uri[]{data.getData()};
+            if (resultCode == RESULT_OK && data != null) {
+                if (data.getClipData() != null) {
+                    // 多选
+                    android.content.ClipData clip = data.getClipData();
+                    java.util.ArrayList<Uri> list = new java.util.ArrayList<>();
+                    for (int i = 0; i < clip.getItemCount(); i++) {
+                        Uri u = clip.getItemAt(i).getUri();
+                        if (u != null) list.add(u);
+                    }
+                    if (!list.isEmpty()) out = list.toArray(new Uri[0]);
+                } else if (data.getData() != null) {
+                    out = new Uri[]{data.getData()};
+                }
             }
             fileCallback.onReceiveValue(out);
             fileCallback = null;

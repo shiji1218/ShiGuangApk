@@ -76,6 +76,22 @@
       esc(hay.slice(start, idx + q.length + 30)).replace(/\n/g, ' ') + '…';
   }
 
+  /** 搜索结果摘要：正文 → 批注 → 位置 */
+  function snippetFor(r, q) {
+    if (r.hitInEntry) return highlight(makeSnippet(r.entry, q), q);
+    if (r.hitNotes.length) return highlight('批注：' + r.hitNotes[0].content.slice(0, 60), q);
+    if (r.entry.place) return highlight('📍 ' + r.entry.place, q);
+    return '';
+  }
+
+  function resultMeta(r) {
+    const bits = [];
+    if (r.hitNoteCount) bits.push('✎ 批注命中 ' + r.hitNoteCount + ' 处');
+    if (r.entry.images && r.entry.images.length) bits.push('📷 ' + r.entry.images.length);
+    if (r.entry.place) bits.push('📍 ' + esc(r.entry.place));
+    return bits.length ? bits.join('　') : '　';
+  }
+
   /* ---------- 复古线性图标（内联 SVG，颜色随上下文） ---------- */
   const ICONS = {
     search: '<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5.5 5.5"/><path d="M7.8 10.5a2.7 2.7 0 0 1 2.7-2.7" opacity=".45"/>',
@@ -88,7 +104,9 @@
     book:   '<path d="M12 6.5C10 4.8 7.3 4.2 4 4.4V19c3.3-.2 6 .4 8 2 2-1.6 4.7-2.2 8-2V4.4c-3.3-.2-6 .4-8 2.1z"/><path d="M12 6.5V21"/>',
     backup: '<path d="M4 7.5h16V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V7.5z"/><path d="M3 3.8h18v3.7H3z"/><path d="M10 11.5h4" opacity=".5"/>',
     down:   '<path d="M12 4v11.5"/><path d="M6.5 10 12 15.5 17.5 10"/><path d="M5 20h14" opacity=".5"/>',
-    up:     '<path d="M12 15.5V4"/><path d="M6.5 9.5 12 4l5.5 5.5"/><path d="M5 20h14" opacity=".5"/>'
+    up:     '<path d="M12 15.5V4"/><path d="M6.5 9.5 12 4l5.5 5.5"/><path d="M5 20h14" opacity=".5"/>',
+    image:  '<rect x="3" y="4.5" width="18" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M4.5 16.5l4.5-4.5 3 3L15 12l4.5 4.5"/>',
+    pin:    '<path d="M12 21s-6-5.2-6-10a6 6 0 0 1 12 0c0 4.8-6 10-6 10z"/><circle cx="12" cy="11" r="2"/>'
   };
 
   function icon(name, size = 20) {
@@ -107,7 +125,9 @@
     editDate: null,                     // 当前新建日记的目标日期
     editId: null,                       // 当前修改的日记 id（null=新建）
     isBackfill: false,                  // 是否补写历史日记
-    editingNote: null                   // 正在编辑的批注 id
+    editingNote: null,                  // 正在编辑的批注 id
+    editorImages: [],                   // 编辑页当前日记的图片 id（≤18）
+    noteImages: []                      // 正在编写/编辑的批注图片 id（≤18）
   };
 
   /* ---------- 路由 ---------- */
@@ -212,8 +232,17 @@
         </div>
         ${entry.title ? `<div class="title">${esc(entry.title)}</div>` : ''}
         <div class="preview">${esc(entry.content)}</div>
-        ${noteCount ? `<div class="notes-count">✎ ${noteCount} 条批注</div>` : ''}
+        ${metaBitsHtml(entry, noteCount)}
       </article>`;
+  }
+
+  /** 卡片底部小字：批注数 / 图片数 / 位置 */
+  function metaBitsHtml(entry, noteCount) {
+    const bits = [];
+    if (noteCount) bits.push('✎ ' + noteCount + ' 条批注');
+    if (entry.images && entry.images.length) bits.push('📷 ' + entry.images.length);
+    if (entry.place) bits.push('📍 ' + esc(entry.place));
+    return bits.length ? `<div class="notes-count">${bits.join('　')}</div>` : '';
   }
 
   function emptyHtml() {
@@ -259,6 +288,7 @@
     state.isBackfill = !editing && targetDate < today;
     state.draft.mood = existing ? existing.mood : 0;
     state.draft.weather = existing ? existing.weather : 0;
+    state.editorImages = existing ? (existing.images || []).slice() : [];
 
     const d = new Date(targetDate + 'T00:00:00');
     const weekday = '星期' + '日一二三四五六'[d.getDay()];
@@ -280,12 +310,65 @@
                value="${esc(existing && existing.title || '')}">
         <textarea id="contentInput" class="input textarea"
                placeholder="今天发生了什么…">${esc(existing && existing.content || '')}</textarea>
+        <div class="label">📍 位置（可选，可被搜索）</div>
+        <input id="placeInput" class="input" placeholder="在哪里？"
+               value="${esc(existing && existing.place || '')}">
+        <div class="label">图片（最多 ${IMG.LIMIT} 张）</div>
+        <div class="img-strip" id="imgStrip"></div>
+        <input type="file" id="imgInput" accept="image/*" multiple hidden>
         <div class="hint">${hint}</div>
         <button class="primary-btn" data-action="save-today">${btnLabel}</button>
         <div class="bottom-space"></div>
       </main>
     `;
     renderPickers();
+    renderEditorImages();
+    document.getElementById('imgInput').addEventListener('change', async ev => {
+      const files = Array.from(ev.target.files || []);
+      ev.target.value = '';
+      if (!files.length) return;
+      const room = IMG.LIMIT - state.editorImages.length;
+      if (room <= 0) { toast(`最多 ${IMG.LIMIT} 张哦`); return; }
+      if (files.length > room) toast(`最多再选 ${room} 张，已自动截取`);
+      const ids = await IMG.saveImages(files, room);
+      state.editorImages.push(...ids);
+      renderEditorImages();
+    });
+  }
+
+  /** 生成缩略图条 HTML（编辑页/批注共用） */
+  async function stripHtml(ids, removeAction, addAction) {
+    let html = '';
+    for (const id of ids) {
+      const u = await IMG.url(id);
+      if (!u) continue;
+      html += `<div class="img-thumb">
+                 <img src="${u}" data-action="preview-img" data-id="${id}" alt="">
+                 <button class="img-x" data-action="${removeAction}" data-id="${id}">✕</button>
+               </div>`;
+    }
+    if (ids.length < IMG.LIMIT) {
+      html += `<button class="img-add" data-action="${addAction}">＋<small>${ids.length}/${IMG.LIMIT}</small></button>`;
+    }
+    return html;
+  }
+
+  async function renderEditorImages() {
+    const strip = document.getElementById('imgStrip');
+    if (strip) strip.innerHTML = await stripHtml(state.editorImages, 'remove-img', 'pick-img');
+  }
+
+  async function renderNoteImages() {
+    const editStrip = document.getElementById('noteEditStrip');
+    if (editStrip) {
+      editStrip.innerHTML = await stripHtml(state.noteImages, 'remove-note-img', 'pick-note-img');
+    }
+    const compose = document.getElementById('noteStrip');
+    if (compose) {
+      compose.innerHTML = (state.editingNote || !state.noteImages.length)
+        ? ''
+        : '<div class="img-strip">' + await stripHtml(state.noteImages, 'remove-note-img', 'pick-note-img') + '</div>';
+    }
   }
 
   function renderPickers() {
@@ -304,10 +387,13 @@
     const title = document.getElementById('titleInput').value;
     const content = document.getElementById('contentInput').value.trim();
     if (!content) { toast('写点什么再保存吧～'); return; }
+    const place = document.getElementById('placeInput');
     const payload = {
       title, content,
       mood: state.draft.mood,
-      weather: state.draft.weather
+      weather: state.draft.weather,
+      place: place ? place.value : '',
+      images: state.editorImages.slice()
     };
     const id = state.editId
       ? DB.updateEntry(state.editId, payload)
@@ -384,7 +470,9 @@
               : '<span class="stamp">已封存</span>'}
           </div>
           ${entry.title ? `<div class="title big">${esc(entry.title)}</div>` : ''}
+          ${entry.place ? `<div class="place">📍 ${esc(entry.place)}</div>` : ''}
           <div class="content-full">${esc(entry.content)}</div>
+          ${(entry.images || []).length ? '<div class="img-grid" id="detailImgs"></div>' : ''}
           <div class="meta">${fmtTime(entry.createdAt)}${entry.updatedAt > entry.createdAt ? ' · ' + fmtTime(entry.updatedAt) : ''}</div>
         </article>
         ${isToday
@@ -397,12 +485,14 @@
                 <div class="note-body">
                   ${state.editingNote === n.id ? `
                     <textarea class="input note-edit" id="noteEditInput">${esc(n.content)}</textarea>
+                    <div id="noteEditStrip"></div>
                     <div class="note-actions">
                       <button class="mini-btn" data-action="save-note" data-id="${n.id}">保存</button>
                       <button class="mini-btn ghost" data-action="cancel-note">取消</button>
                     </div>`
                   : `
                     <div class="note-text" data-action="edit-note" data-id="${n.id}">${esc(n.content)}</div>
+                    ${(n.images || []).length ? `<div class="img-grid small" data-note-imgs="${n.id}"></div>` : ''}
                     <div class="note-time">${fmtTime(n.createdAt)}${n.updatedAt ? ' · ' + fmtTime(n.updatedAt) : ''}</div>`}
                 </div>
               </div>`).join('')
@@ -410,8 +500,13 @@
         <div class="bottom-space"></div>
       </main>
       <div class="input-bar">
-        <input id="noteInput" class="input grow" placeholder="写一条批注…">
-        <button class="send-btn" data-action="add-note" data-id="${id}" aria-label="添加批注">${icon('send', 19)}</button>
+        <div id="noteStrip"></div>
+        <div class="input-row">
+          <input id="noteInput" class="input grow" placeholder="写一条批注…">
+          <button class="icon-btn" data-action="pick-note-img" aria-label="添加图片">${icon('image', 20)}</button>
+          <button class="send-btn" data-action="add-note" data-id="${id}" aria-label="添加批注">${icon('send', 19)}</button>
+        </div>
+        <input type="file" id="noteImgInput" accept="image/*" multiple hidden>
       </div>
     `;
 
@@ -419,13 +514,57 @@
     inp.addEventListener('keydown', e => {
       if (e.key === 'Enter') addNote(id);
     });
+
+    document.getElementById('noteImgInput').addEventListener('change', async ev => {
+      const files = Array.from(ev.target.files || []);
+      ev.target.value = '';
+      if (!files.length) return;
+      const room = IMG.LIMIT - state.noteImages.length;
+      if (room <= 0) { toast(`最多 ${IMG.LIMIT} 张哦`); return; }
+      if (files.length > room) toast(`最多再选 ${room} 张，已自动截取`);
+      const ids = await IMG.saveImages(files, room);
+      state.noteImages.push(...ids);
+      renderNoteImages();
+    });
+
+    fillDetailImages(entry);
+    renderNoteImages();
+    fillNoteImages();
+  }
+
+  /** 异步填充详情页图片网格 */
+  async function fillDetailImages(entry) {
+    const grid = document.getElementById('detailImgs');
+    if (!grid) return;
+    let html = '';
+    for (const imgId of (entry.images || [])) {
+      const u = await IMG.url(imgId);
+      if (u) html += `<img src="${u}" data-action="preview-img" data-id="${imgId}" alt="">`;
+    }
+    grid.innerHTML = html;
+  }
+
+  /** 异步填充批注卡片里的图片 */
+  async function fillNoteImages() {
+    const grids = document.querySelectorAll('[data-note-imgs]');
+    for (const grid of grids) {
+      const note = DB.getAnnotations(grid.getAttribute('data-note-imgs'))[0];
+      if (!note) continue;
+      let html = '';
+      for (const imgId of (note.images || [])) {
+        const u = await IMG.url(imgId);
+        if (u) html += `<img src="${u}" data-action="preview-img" data-id="${imgId}" alt="">`;
+      }
+      grid.innerHTML = html;
+    }
   }
 
   function addNote(entryId) {
     const inp = document.getElementById('noteInput');
     const text = (inp && inp.value || '').trim();
-    if (!text) return;
-    DB.addAnnotation(entryId, text);
+    if (!text && !state.noteImages.length) { toast('写点什么或选张图片吧～'); return; }
+    DB.addAnnotation(entryId, text || '📷', state.noteImages.slice());
+    state.noteImages = [];
     route();
   }
 
@@ -474,8 +613,8 @@
             <div class="mw">${MOODS[r.entry.mood] || ''} ${WEATHERS[r.entry.weather] || ''}</div>
           </div>
           ${r.entry.title ? `<div class="title">${highlight(r.entry.title, q)}</div>` : ''}
-          <div class="preview">${highlight(makeSnippet(r.entry, q), q)}</div>
-          ${r.hitNoteCount ? `<div class="notes-count">批注中有 ${r.hitNoteCount} 处匹配</div>` : ''}
+          <div class="preview">${snippetFor(r, q)}</div>
+          <div class="notes-count">${resultMeta(r)}</div>
         </article>`).join('')}
     `;
   }
@@ -514,11 +653,12 @@
     });
   }
 
-  function exportData() {
+  async function exportData() {
     const d = new Date();
     const p = n => String(n).padStart(2, '0');
     const name = `拾光手账备份-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}.json`;
-    const data = DB.exportAll();
+    toast('正在打包备份（含图片）…');
+    const data = await DB.exportAll();
 
     // APP（WebView 壳）内：走原生桥保存到系统「下载」目录
     if (window.AppBridge && typeof window.AppBridge.saveFile === 'function') {
@@ -541,7 +681,7 @@
 
   function importData(file) {
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       let ok = false;
       try {
         ok = Array.isArray(JSON.parse(reader.result).entries);
@@ -549,7 +689,7 @@
       if (!ok) { toast('备份文件格式不正确 ⚠️'); return; }
       if (!confirm('导入将覆盖当前设备上的全部日记和批注，确定继续？')) return;
       try {
-        DB.importAll(reader.result);
+        await DB.importAll(reader.result);
         toast('导入成功 ✨');
         location.hash = '#/';
       } catch (e) {
@@ -574,22 +714,47 @@
       case 'export-data':   exportData(); break;
       case 'import-data':   document.getElementById('importFile').click(); break;
       case 'open-entry':    location.hash = '#/entry/' + encodeURIComponent(el.dataset.id); break;
+      case 'pick-img':      document.getElementById('imgInput').click(); break;
+      case 'remove-img':
+        state.editorImages = state.editorImages.filter(x => x !== el.dataset.id);
+        renderEditorImages();
+        break;
+      case 'pick-note-img': document.getElementById('noteImgInput').click(); break;
+      case 'remove-note-img':
+        state.noteImages = state.noteImages.filter(x => x !== el.dataset.id);
+        renderNoteImages();
+        break;
+      case 'preview-img':
+        IMG.url(el.dataset.id).then(u => {
+          if (!u) return;
+          document.getElementById('lightboxImg').src = u;
+          document.getElementById('lightbox').classList.add('show');
+        });
+        break;
+      case 'close-lightbox':
+        document.getElementById('lightbox').classList.remove('show');
+        break;
       case 'edit-entry':    location.hash = '#/edit/' + encodeURIComponent(el.dataset.id); break;
       case 'go-backfill':   location.hash = '#/write/' + el.dataset.date; break;
-      case 'edit-note':
+      case 'edit-note': {
+        const note = DB.getAnnotation(el.dataset.id);
         state.editingNote = el.dataset.id;
+        state.noteImages = note ? (note.images || []).slice() : [];
         route();
         break;
+      }
       case 'cancel-note':
         state.editingNote = null;
+        state.noteImages = [];
         route();
         break;
       case 'save-note': {
         const ta = document.getElementById('noteEditInput');
         const text = (ta && ta.value || '').trim();
-        if (!text) { toast('批注内容不能为空'); return; }
-        DB.updateAnnotation(el.dataset.id, text);
+        if (!text && !state.noteImages.length) { toast('批注内容不能为空'); return; }
+        DB.updateAnnotation(el.dataset.id, text || '📷', state.noteImages.slice());
         state.editingNote = null;
+        state.noteImages = [];
         toast('批注已修改 ✨');
         route();
         break;
