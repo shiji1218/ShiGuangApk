@@ -50,6 +50,57 @@
     return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
   }
 
+  /** 卡片用：时:分（减少视觉噪音） */
+  function fmtClockShort(ms) {
+    const d = new Date(ms);
+    const p = n => String(n).padStart(2, '0');
+    return `${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  /** 心情兼容：历史数据为数字，新数据为数组 */
+  function moodList(entry) {
+    if (!entry) return [];
+    if (Array.isArray(entry.mood)) return entry.mood;
+    if (typeof entry.mood === 'number') return [entry.mood];
+    return [];
+  }
+
+  /* ---------- 偏好设置 ---------- */
+  function themeSetting() {
+    return localStorage.getItem('shiguang.theme') || 'auto';
+  }
+
+  function applyTheme() {
+    const s = themeSetting();
+    const dark = s === 'dark' ||
+      (s === 'auto' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  }
+
+  function weekStart() {
+    return localStorage.getItem('shiguang.weekStart') || 'mon';
+  }
+
+  function reminderSetting() {
+    try {
+      const r = JSON.parse(localStorage.getItem('shiguang.reminder'));
+      if (r && r.time) return { enabled: !!r.enabled, time: r.time };
+    } catch (e) { /* 使用默认值 */ }
+    return { enabled: false, time: '20:00' };
+  }
+
+  /** 把提醒设置应用到原生壳（浏览器内无效） */
+  function applyReminder() {
+    if (!window.AppBridge) return;
+    const r = reminderSetting();
+    if (r.enabled && window.AppBridge.setDailyReminder) {
+      const parts = r.time.split(':').map(Number);
+      window.AppBridge.setDailyReminder(parts[0] || 20, parts[1] || 0);
+    } else if (window.AppBridge.cancelDailyReminder) {
+      window.AppBridge.cancelDailyReminder();
+    }
+  }
+
   /** 复古中文短日期：今年显示「10月29日」，往年带年份，避免日期行过长重叠 */
   function fmtDateCn(ds) {
     const [y, m, d] = ds.split('-').map(Number);
@@ -106,7 +157,8 @@
     down:   '<path d="M12 4v11.5"/><path d="M6.5 10 12 15.5 17.5 10"/><path d="M5 20h14" opacity=".5"/>',
     up:     '<path d="M12 15.5V4"/><path d="M6.5 9.5 12 4l5.5 5.5"/><path d="M5 20h14" opacity=".5"/>',
     image:  '<rect x="3" y="4.5" width="18" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M4.5 16.5l4.5-4.5 3 3L15 12l4.5 4.5"/>',
-    pin:    '<path d="M12 21s-6-5.2-6-10a6 6 0 0 1 12 0c0 4.8-6 10-6 10z"/><circle cx="12" cy="11" r="2"/>'
+    pin:    '<path d="M12 21s-6-5.2-6-10a6 6 0 0 1 12 0c0 4.8-6 10-6 10z"/><circle cx="12" cy="11" r="2"/>',
+    trash:  '<path d="M4.5 6.5h15"/><path d="M8.5 6.5V4.2h7v2.3"/><path d="M6.5 6.5l.9 13h9.2l.9-13"/><path d="M10 10.5v5.5M14 10.5v5.5" opacity=".5"/>'
   };
 
   function icon(name, size = 20) {
@@ -121,7 +173,9 @@
     viewMonth: new Date().getMonth(),   // 0 基
     homeView: 'list',                   // 主页视图：list=近期手账（默认）/ calendar=月历
     searchQ: '',
-    draft: { mood: 0, weather: 0 },     // 编辑页心情/天气选中值
+    searchMonth: '',                    // 搜索页月份筛选
+    draft: { weather: 0 },              // 编辑页天气选中值
+    draftMoods: [],                     // 编辑页心情选中值（可多选）
     editDate: null,                     // 当前新建日记的目标日期
     editId: null,                       // 当前修改的日记 id（null=新建）
     isBackfill: false,                  // 是否补写历史日记
@@ -140,6 +194,7 @@
     if (hash.startsWith('#/write') || hash.startsWith('#/edit/')) return renderEditor();
     if (hash.startsWith('#/search')) return renderSearch();
     if (hash.startsWith('#/settings')) return renderSettings();
+    if (hash.startsWith('#/stats')) return renderStats();
     return renderHome();
   }
   window.addEventListener('hashchange', route);
@@ -180,8 +235,19 @@
               : emptyHtml())}
         <div class="bottom-space"></div>
       </main>
+      ${!isCal ? '<button class="to-top" id="toTop" data-action="to-top" aria-label="回到顶部">↑</button>' : ''}
       <button class="fab" data-action="go-write">${icon('edit', 16)}<span>写今天</span></button>
     `;
+
+    if (!isCal) {
+      const ls = document.querySelector('.list-scroll');
+      const topBtn = document.getElementById('toTop');
+      if (ls && topBtn) {
+        ls.addEventListener('scroll', () => {
+          topBtn.classList.toggle('show', ls.scrollTop > 400);
+        });
+      }
+    }
   }
 
   function calendarHtml(entries) {
@@ -189,10 +255,12 @@
     const byDate = {};
     entries.forEach(e => { byDate[e.date] = e; });
 
-    let offset = new Date(y, m, 1).getDay() - 1;   // 周一为一周开始
-    if (offset < 0) offset = 6;
+    const sunFirst = weekStart() === 'sun';
+    let offset = new Date(y, m, 1).getDay() - (sunFirst ? 0 : 1);   // 周起始可设置
+    if (offset < 0) offset += 7;
     const daysInMonth = new Date(y, m + 1, 0).getDate();
     const today = DB.todayStr();
+    const weekLabels = sunFirst ? ['日', '一', '二', '三', '四', '五', '六'] : WEEKDAYS;
 
     let cells = '';
     for (let i = 0; i < offset; i++) cells += '<span class="day empty"></span>';
@@ -215,7 +283,7 @@
           <div class="cal-title">${y} 年 ${m + 1} 月</div>
           <button data-action="next-month" aria-label="下个月">${icon('next', 20)}</button>
         </div>
-        <div class="cal-week">${WEEKDAYS.map(w => `<span>${w}</span>`).join('')}</div>
+        <div class="cal-week">${weekLabels.map(w => `<span>${w}</span>`).join('')}</div>
         <div class="cal-grid">${cells}</div>
       </div>`;
   }
@@ -226,9 +294,9 @@
       <article class="card diary-card" data-action="open-entry" data-id="${entry.id}">
         <span class="tape" style="background:${tapeColor(entry.date)}"></span>
         <div class="row">
-          <div class="date">${fmtDateCn(entry.date)}<span class="time">${fmtClock(entry.createdAt)}</span></div>
+          <div class="date">${fmtDateCn(entry.date)}<span class="time">${fmtClockShort(entry.createdAt)}</span></div>
           ${isToday ? '<span class="stamp green">今天</span>' : ''}
-          <div class="mw">${MOODS[entry.mood] || ''} ${WEATHERS[entry.weather] || ''}</div>
+          <div class="mw">${moodList(entry).map(i => MOODS[i] || '').join('')} ${WEATHERS[entry.weather] || ''}</div>
         </div>
         ${entry.title ? `<div class="title">${esc(entry.title)}</div>` : ''}
         <div class="preview">${esc(entry.content)}</div>
@@ -286,7 +354,7 @@
     state.editId = editId;
     state.editDate = targetDate;
     state.isBackfill = !editing && targetDate < today;
-    state.draft.mood = existing ? existing.mood : 0;
+    state.draftMoods = moodList(existing).slice();
     state.draft.weather = existing ? existing.weather : 0;
     state.editorImages = existing ? (existing.images || []).slice() : [];
 
@@ -376,7 +444,7 @@
     const weatherEl = document.getElementById('weatherPicker');
     if (!moodEl || !weatherEl) return;
     moodEl.innerHTML = MOODS.map((m, i) =>
-      `<button class="pick ${i === state.draft.mood ? 'on' : ''}"
+      `<button class="pick ${state.draftMoods.includes(i) ? 'on' : ''}"
                data-action="pick-mood" data-index="${i}">${m}</button>`).join('');
     weatherEl.innerHTML = WEATHERS.map((w, i) =>
       `<button class="pick ${i === state.draft.weather ? 'on' : ''}"
@@ -390,7 +458,7 @@
     const place = document.getElementById('placeInput');
     const payload = {
       title, content,
-      mood: state.draft.mood,
+      mood: state.draftMoods.slice(),
       weather: state.draft.weather,
       place: place ? place.value : '',
       images: state.editorImages.slice()
@@ -457,13 +525,15 @@
           <div class="page-title">${fmtDateCn(entry.date)}</div>
           <div class="sub">${isToday ? '今天' : '已封存 · 仅可批注'}</div>
         </div>
-        ${isToday ? `<button class="icon-btn" data-action="edit-entry" data-id="${id}" aria-label="修改正文">${icon('edit', 20)}</button>` : ''}
+        ${isToday ? `
+          <button class="icon-btn" data-action="edit-entry" data-id="${id}" aria-label="修改正文">${icon('edit', 20)}</button>
+          <button class="icon-btn" data-action="del-entry" data-id="${id}" aria-label="删除日记">${icon('trash', 20)}</button>` : ''}
       </header>
       <main>
         <article class="card diary-card">
           <span class="tape" style="background:${tapeColor(entry.date)}"></span>
           <div class="row">
-            <div class="mw">${MOODS[entry.mood] || ''} ${WEATHERS[entry.weather] || ''}</div>
+            <div class="mw">${moodList(entry).map(i => MOODS[i] || '').join('')} ${WEATHERS[entry.weather] || ''}</div>
             <div style="flex:1"></div>
             ${isToday
               ? '<span class="stamp green">今天</span>'
@@ -577,13 +647,26 @@
           <input id="searchInput" class="input" placeholder="搜索标题、正文或批注…">
         </div>
       </header>
-      <main><div id="searchResults"></div></main>
+      <main>
+        <select id="monthFilter" class="input month-filter">
+          <option value="">全部月份</option>
+          ${[...new Set(DB.getEntries().map(e => e.date.slice(0, 7)))]
+            .sort().reverse()
+            .map(mo => `<option value="${mo}" ${state.searchMonth === mo ? 'selected' : ''}>${mo.replace('-', ' 年 ')} 月</option>`)
+            .join('')}
+        </select>
+        <div id="searchResults"></div>
+      </main>
     `;
     const inp = document.getElementById('searchInput');
     inp.value = state.searchQ;
     inp.focus();
     inp.addEventListener('input', () => {
       state.searchQ = inp.value;
+      renderResults();
+    });
+    document.getElementById('monthFilter').addEventListener('change', ev => {
+      state.searchMonth = ev.target.value;
       renderResults();
     });
     renderResults();
@@ -598,7 +681,8 @@
       box.innerHTML = '<div class="hint pad" style="margin-top:24px">输入关键词找回忆 🔍<br>可搜标题、正文和批注内容</div>';
       return;
     }
-    const results = DB.search(q);
+    const results = DB.search(q)
+      .filter(r => !state.searchMonth || r.entry.date.startsWith(state.searchMonth));
     if (!results.length) {
       box.innerHTML = `<div class="hint pad" style="margin-top:24px">没有找到与「${esc(q)}」相关的内容</div>`;
       return;
@@ -610,7 +694,7 @@
           <span class="tape" style="background:${tapeColor(r.entry.date)}"></span>
           <div class="row">
             <div class="date">${fmtDateCn(r.entry.date)}</div>
-            <div class="mw">${MOODS[r.entry.mood] || ''} ${WEATHERS[r.entry.weather] || ''}</div>
+            <div class="mw">${moodList(r.entry).map(i => MOODS[i] || '').join('')} ${WEATHERS[r.entry.weather] || ''}</div>
           </div>
           ${r.entry.title ? `<div class="title">${highlight(r.entry.title, q)}</div>` : ''}
           <div class="preview">${snippetFor(r, q)}</div>
@@ -619,28 +703,61 @@
     `;
   }
 
-  /* ---------- 备份页：一键导出 / 导入 ---------- */
+  /* ---------- 设置页：备份 / 偏好 / 维护 ---------- */
   function renderSettings() {
     const entries = DB.getEntries();
     const totalNotes = Object.values(DB.annotationCountMap()).reduce((a, b) => a + b, 0);
+    const themeNames = { auto: '跟随系统', light: '浅色', dark: '深色' };
+    const reminder = reminderSetting();
 
     $app.innerHTML = `
       <header class="topbar">
         <button class="icon-btn" data-action="back" aria-label="返回">${icon('back', 21)}</button>
         <div>
-          <div class="page-title">数据备份</div>
+          <div class="page-title">设置</div>
           <div class="sub">${entries.length} 篇日记 · ${totalNotes} 条批注</div>
         </div>
       </header>
       <main>
+        <div class="section-title">数据备份</div>
         <article class="card diary-card">
           <span class="tape" style="background:${tapeColor('backup')}"></span>
-          <div class="title big">📦 备份手账箱</div>
-          <div class="hint" style="margin-top:8px">所有数据只保存在本设备浏览器里。换手机、重装或清除浏览器数据前，请先导出备份文件。</div>
-          <button class="primary-btn" data-action="export-data" style="margin-top:16px">${icon('down', 16)}<span>一键导出全部数据</span></button>
+          <div class="hint" style="margin-top:6px">所有数据只保存在本设备。换手机、重装或清除数据前，请先导出备份（含图片）。</div>
+          <button class="primary-btn" data-action="export-data" style="margin-top:14px">${icon('down', 16)}<span>一键导出全部数据</span></button>
           <button class="ghost-btn" data-action="import-data">${icon('up', 16)}<span>一键导入全部数据</span></button>
           <input type="file" id="importFile" accept=".json,application/json" hidden>
-          <div class="hint" style="margin-top:12px">⚠️ 导入会覆盖当前设备上的全部日记和批注，且历史日记一经写入仍不可修改。</div>
+          <div class="hint" style="margin-top:12px">⚠️ 导入会覆盖当前设备上的全部日记和批注。</div>
+          <button class="ghost-btn" data-action="export-text">${icon('down', 16)}<span>导出纯文本长文</span></button>
+        </article>
+
+        <div class="section-title pad">偏好</div>
+        <article class="card diary-card">
+          <div class="set-row">
+            <span>主题 · ${themeNames[themeSetting()]}</span>
+            <button class="mini-btn" data-action="cycle-theme">切换</button>
+          </div>
+          <div class="set-row">
+            <span>一周从${weekStart() === 'mon' ? '周一' : '周日'}开始</span>
+            <button class="mini-btn ghost" data-action="cycle-weekstart">切换</button>
+          </div>
+          <div class="set-row">
+            <span>每日提醒 · ${reminder.enabled ? '已开启' : '已关闭'}</span>
+            <input type="time" id="reminderTime" class="input time-input" value="${reminder.time}">
+            <button class="mini-btn ${reminder.enabled ? '' : 'ghost'}" data-action="toggle-reminder">${reminder.enabled ? '关闭' : '开启'}</button>
+          </div>
+          <div class="hint">提醒需在 APP 内使用；浏览器中设置不生效。</div>
+        </article>
+
+        <div class="section-title pad">维护</div>
+        <article class="card diary-card">
+          <div class="set-row">
+            <span>写作统计</span>
+            <button class="mini-btn" data-action="go-stats">进入</button>
+          </div>
+          <div class="set-row">
+            <span>清理未引用图片</span>
+            <button class="mini-btn ghost" data-action="cleanup-images">清理</button>
+          </div>
         </article>
         <div class="bottom-space"></div>
       </main>
@@ -651,6 +768,78 @@
       if (file) importData(file);
       ev.target.value = '';
     });
+    document.getElementById('reminderTime').addEventListener('change', ev => {
+      const r = reminderSetting();
+      r.time = ev.target.value || r.time;
+      localStorage.setItem('shiguang.reminder', JSON.stringify(r));
+      if (r.enabled) { applyReminder(); toast(`提醒时间已改为 ${r.time}`); }
+    });
+  }
+
+  /* ---------- 写作统计 ---------- */
+  function renderStats() {
+    const entries = DB.getEntries();
+    const totalNotes = Object.values(DB.annotationCountMap()).reduce((a, b) => a + b, 0);
+    const totalChars = entries.reduce((s, e) => s + (e.content || '').length, 0);
+    const totalImgs = entries.reduce((s, e) => s + (e.images || []).length, 0);
+    const days = new Set(entries.map(e => e.date));
+
+    // 连续天数：从今天（或昨天）往前数
+    const shift = ds => {
+      const dt = new Date(ds + 'T00:00:00');
+      dt.setDate(dt.getDate() - 1);
+      const p = n => String(n).padStart(2, '0');
+      return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
+    };
+    const today = DB.todayStr();
+    let cursor = days.has(today) ? today : shift(today);
+    let streak = 0;
+    while (days.has(cursor)) { streak++; cursor = shift(cursor); }
+
+    const moodDist = {};
+    entries.forEach(e => moodList(e).forEach(i => { moodDist[i] = (moodDist[i] || 0) + 1; }));
+    const weatherDist = {};
+    entries.forEach(e => { weatherDist[e.weather] = (weatherDist[e.weather] || 0) + 1; });
+    const moodMax = Math.max(1, ...Object.values(moodDist));
+    const weatherMax = Math.max(1, ...Object.values(weatherDist));
+
+    $app.innerHTML = `
+      <header class="topbar">
+        <button class="icon-btn" data-action="back" aria-label="返回">${icon('back', 21)}</button>
+        <div>
+          <div class="page-title">写作统计</div>
+          <div class="sub">所有数据一目了然</div>
+        </div>
+      </header>
+      <main>
+        <div class="stat-grid">
+          <div class="card stat-card"><div class="stat-num">${streak}</div><div class="stat-label">连续天数 🔥</div></div>
+          <div class="card stat-card"><div class="stat-num">${entries.length}</div><div class="stat-label">日记总篇数</div></div>
+          <div class="card stat-card"><div class="stat-num">${totalChars}</div><div class="stat-label">累计字数</div></div>
+          <div class="card stat-card"><div class="stat-num">${days.size}</div><div class="stat-label">写作天数</div></div>
+          <div class="card stat-card"><div class="stat-num">${totalNotes}</div><div class="stat-label">批注条数</div></div>
+          <div class="card stat-card"><div class="stat-num">${totalImgs}</div><div class="stat-label">图片张数</div></div>
+        </div>
+        <div class="section-title pad">心情分布</div>
+        ${Object.keys(moodDist).length
+          ? Object.entries(moodDist).sort((a, b) => b[1] - a[1]).map(([i, c]) => `
+              <div class="bar-row">
+                <span class="bar-emoji">${MOODS[+i] || ''}</span>
+                <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c / moodMax * 100)}%"></div></div>
+                <span class="bar-count">${c}</span>
+              </div>`).join('')
+          : '<div class="hint pad">还没有数据</div>'}
+        <div class="section-title pad">天气分布</div>
+        ${Object.keys(weatherDist).length
+          ? Object.entries(weatherDist).sort((a, b) => b[1] - a[1]).map(([i, c]) => `
+              <div class="bar-row">
+                <span class="bar-emoji">${WEATHERS[+i] || ''}</span>
+                <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c / weatherMax * 100)}%"></div></div>
+                <span class="bar-count">${c}</span>
+              </div>`).join('')
+          : '<div class="hint pad">还没有数据</div>'}
+        <div class="bottom-space"></div>
+      </main>`;
   }
 
   async function exportData() {
@@ -677,6 +866,43 @@
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     toast('备份文件已导出 📦');
+  }
+
+  /** 通用文本保存：APP 走原生桥，浏览器走下载 */
+  async function saveTextFile(name, content) {
+    if (window.AppBridge && typeof window.AppBridge.saveFile === 'function') {
+      window.AppBridge.saveFile(name, content);
+      toast('已保存到「下载」📦');
+      return;
+    }
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast('文件已导出 📦');
+  }
+
+  /** 导出纯文本长文（按日期分组，含批注） */
+  async function exportText() {
+    const entries = DB.getEntries();
+    if (!entries.length) { toast('还没有日记可导出'); return; }
+    let out = '拾光手账\n';
+    let lastDate = '';
+    for (const e of entries) {
+      if (e.date !== lastDate) { out += `\n━━━ ${e.date} ━━━\n`; lastDate = e.date; }
+      const moods = moodList(e).map(i => MOODS[i] || '').join('');
+      out += `\n[${fmtTime(e.createdAt)}] ${moods} ${WEATHERS[e.weather] || ''}${e.place ? ' 📍' + e.place : ''}\n`;
+      if (e.title) out += e.title + '\n';
+      out += e.content + '\n';
+      DB.getAnnotations(e.id).forEach(n => {
+        out += `  └ 批注(${fmtTime(n.createdAt)})：${n.content}\n`;
+      });
+    }
+    await saveTextFile(`拾光手账文本-${DB.todayStr()}.txt`, out);
   }
 
   function importData(file) {
@@ -711,6 +937,57 @@
         break;
       case 'go-search':     location.hash = '#/search'; break;
       case 'go-settings':   location.hash = '#/settings'; break;
+      case 'go-stats':      location.hash = '#/stats'; break;
+      case 'export-text':   exportText(); break;
+      case 'to-top': {
+        const ls = document.querySelector('.list-scroll');
+        if (ls) ls.scrollTo({ top: 0, behavior: 'smooth' });
+        break;
+      }
+      case 'cycle-theme': {
+        const order = ['auto', 'light', 'dark'];
+        const next = order[(order.indexOf(themeSetting()) + 1) % 3];
+        localStorage.setItem('shiguang.theme', next);
+        applyTheme();
+        toast('主题：' + ({ auto: '跟随系统', light: '浅色', dark: '深色' })[next]);
+        renderSettings();
+        break;
+      }
+      case 'cycle-weekstart':
+        localStorage.setItem('shiguang.weekStart', weekStart() === 'mon' ? 'sun' : 'mon');
+        toast(weekStart() === 'sun' ? '一周从周日开始' : '一周从周一开始');
+        renderSettings();
+        break;
+      case 'toggle-reminder': {
+        const timeInput = document.getElementById('reminderTime');
+        const r = reminderSetting();
+        r.time = (timeInput && timeInput.value) || r.time;
+        r.enabled = !r.enabled;
+        localStorage.setItem('shiguang.reminder', JSON.stringify(r));
+        applyReminder();
+        toast(r.enabled ? `每天 ${r.time} 提醒你写手账 ⏰` : '已关闭提醒');
+        renderSettings();
+        break;
+      }
+      case 'cleanup-images': {
+        const ref = new Set();
+        DB.getEntries().forEach(e => (e.images || []).forEach(i => ref.add(i)));
+        DB.getEntries().forEach(e => DB.getAnnotations(e.id)
+          .forEach(n => (n.images || []).forEach(i => ref.add(i))));
+        IMG.cleanup(ref).then(n =>
+          toast(n ? `已清理 ${n} 张未引用图片 🧹` : '没有需要清理的图片 ✨'));
+        break;
+      }
+      case 'del-entry':
+        if (confirm('删除这篇日记？其批注会一并删除，不可恢复。')) {
+          if (DB.deleteEntry(el.dataset.id)) {
+            toast('已删除');
+            location.hash = '#/';
+          } else {
+            toast('只有今天的日记可以删除');
+          }
+        }
+        break;
       case 'export-data':   exportData(); break;
       case 'import-data':   document.getElementById('importFile').click(); break;
       case 'open-entry':    location.hash = '#/entry/' + encodeURIComponent(el.dataset.id); break;
@@ -786,10 +1063,14 @@
         }
         break;
       }
-      case 'pick-mood':
-        state.draft.mood = +el.dataset.index;
+      case 'pick-mood': {
+        const i = +el.dataset.index;
+        const pos = state.draftMoods.indexOf(i);
+        if (pos >= 0) state.draftMoods.splice(pos, 1);
+        else state.draftMoods.push(i);
         renderPickers();
         break;
+      }
       case 'pick-weather':
         state.draft.weather = +el.dataset.index;
         renderPickers();
@@ -800,6 +1081,14 @@
   });
 
   /* ---------- 启动 ---------- */
+  applyTheme();
+  applyReminder();
+  if (window.matchMedia) {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    if (mq.addEventListener) {
+      mq.addEventListener('change', () => { if (themeSetting() === 'auto') applyTheme(); });
+    }
+  }
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js').catch(() => {});

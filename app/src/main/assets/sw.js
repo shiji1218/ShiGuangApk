@@ -1,5 +1,5 @@
 /* 拾光手账 · Service Worker：缓存应用外壳，离线可用 */
-const CACHE = 'shiguang-v16';
+const CACHE = 'shiguang-v17';
 const ASSETS = [
   './',
   'index.html',

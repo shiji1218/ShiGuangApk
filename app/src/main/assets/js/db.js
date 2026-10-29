@@ -13,9 +13,44 @@ const DB = (() => {
       return fallback;
     }
   }
+
+  /**
+   * 原子性写入：先写 staging，再把旧值存入 .bak，最后覆盖正式键。
+   * 若写盘中途被杀，启动时 repair() 会用 .bak / .staging 恢复。
+   */
   function write(key, value) {
+    localStorage.setItem(key + '.staging', JSON.stringify(value));
+    const old = localStorage.getItem(key);
+    if (old != null) localStorage.setItem(key + '.bak', old);
     localStorage.setItem(key, JSON.stringify(value));
+    localStorage.removeItem(key + '.staging');
   }
+
+  /** 启动自检：正式键损坏时用 .staging / .bak 恢复 */
+  function repair() {
+    [ENTRIES_KEY, NOTES_KEY].forEach(key => {
+      let cur = null;
+      try {
+        const raw = localStorage.getItem(key);
+        cur = raw == null ? null : JSON.parse(raw);
+      } catch (e) { cur = 'invalid'; }
+      const broken = cur === 'invalid' || (cur != null && !Array.isArray(cur));
+      if (!broken) return;
+      // 依次尝试 staging → bak
+      for (const fallbackKey of [key + '.staging', key + '.bak']) {
+        try {
+          const raw = localStorage.getItem(fallbackKey);
+          const arr = raw == null ? null : JSON.parse(raw);
+          if (Array.isArray(arr)) {
+            localStorage.setItem(key, JSON.stringify(arr));
+            localStorage.removeItem(fallbackKey);
+            return;
+          }
+        } catch (e) { /* 继续尝试下一个 */ }
+      }
+    });
+  }
+  repair();
   function pad(n) { return String(n).padStart(2, '0'); }
 
   return {
@@ -83,6 +118,19 @@ const DB = (() => {
       });
       write(ENTRIES_KEY, entries);
       return e.id;
+    },
+
+    /**
+     * 删除日记：仅「今天」的允许删除（连同其批注）；
+     * 历史日记已封存，不可删除，返回 false。
+     */
+    deleteEntry(id) {
+      const entries = read(ENTRIES_KEY, []);
+      const e = entries.find(x => x.id === id);
+      if (!e || e.date !== this.todayStr()) return false;
+      write(ENTRIES_KEY, entries.filter(x => x.id !== id));
+      write(NOTES_KEY, read(NOTES_KEY, []).filter(a => a.entryId !== id));
+      return true;
     },
 
     /** 某天的全部日记，按写作时间正序 */
@@ -329,5 +377,27 @@ const IMG = (() => {
     if (blob) await put(id, blob);
   }
 
-  return { LIMIT: 18, saveImages, url, exportDataUrls, importDataUrl };
+  function del(id) {
+    return open().then(db => new Promise((res, rej) => {
+      const t = db.transaction('images', 'readwrite');
+      t.objectStore('images').delete(id);
+      t.oncomplete = () => res(true);
+      t.onerror = () => rej(t.error);
+    }));
+  }
+
+  /** 清理未被任何日记/批注引用的孤儿图片，返回清理数量 */
+  async function cleanup(referencedSet) {
+    const { keys } = await all();
+    let removed = 0;
+    for (const k of keys) {
+      if (!referencedSet.has(k)) {
+        await del(k);
+        removed++;
+      }
+    }
+    return removed;
+  }
+
+  return { LIMIT: 18, saveImages, url, del, cleanup, exportDataUrls, importDataUrl };
 })();

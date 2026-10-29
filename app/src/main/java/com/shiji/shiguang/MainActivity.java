@@ -37,6 +37,7 @@ public class MainActivity extends Activity {
 
     private static final int REQ_FILE = 1001;
     private static final int REQ_PERM = 1002;
+    private static final int REQ_NOTIF = 1003;
 
     private WebView web;
     private ValueCallback<Uri[]> fileCallback;
@@ -112,6 +113,21 @@ public class MainActivity extends Activity {
                 pendingSave = new String[]{name == null ? "" : name, content == null ? "" : content};
                 requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQ_PERM);
             }
+        }
+
+        @JavascriptInterface
+        public void setDailyReminder(int hour, int minute) {
+            // Android 13+ 通知需要运行时权限
+            if (Build.VERSION.SDK_INT >= 33) {
+                main.post(() -> requestPermissions(
+                        new String[]{"android.permission.POST_NOTIFICATIONS"}, REQ_NOTIF));
+            }
+            ReminderScheduler.set(MainActivity.this, hour, minute);
+        }
+
+        @JavascriptInterface
+        public void cancelDailyReminder() {
+            ReminderScheduler.cancel(MainActivity.this);
         }
     }
 

@@ -558,6 +558,92 @@ main { padding: 0 1.25rem 1.25rem; }
   border-radius: 0.5rem;
 }
 
+/* ---------- 设置页行 / 统计页 ---------- */
+.set-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}
+.set-row span { flex: 1; }
+.set-row .time-input { width: 7.5rem; flex: none; margin-top: 0; padding: 0.4rem 0.6rem; }
+.set-row + .set-row { border-top: 1px dashed var(--line); }
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.625rem;
+  margin-top: 0.875rem;
+}
+.stat-card { padding: 0.875rem 0.75rem; text-align: center; }
+.stat-num {
+  font-size: 1.625rem;
+  font-weight: 700;
+  color: var(--rust);
+  font-family: var(--serif);
+}
+.stat-label { font-size: 0.75rem; color: var(--ink-soft); margin-top: 0.125rem; }
+
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.25rem 0;
+}
+.bar-emoji { width: 1.75rem; text-align: center; font-size: 1.125rem; }
+.bar-track {
+  flex: 1;
+  height: 0.625rem;
+  background: var(--mustard-light);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  background: var(--rust);
+  border-radius: 0.5rem;
+  transition: width .4s;
+}
+.bar-count { width: 1.5rem; text-align: right; font-size: 0.75rem; color: var(--ink-soft); }
+
+/* 回到顶部 */
+.to-top {
+  position: fixed;
+  left: 1.25rem;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 1.875rem);
+  z-index: 19;
+  width: 2.5rem; height: 2.5rem;
+  border-radius: 50%;
+  background: var(--paper);
+  border: 1.5px solid var(--card-border);
+  box-shadow: var(--hard-shadow);
+  color: var(--ink-soft);
+  font-size: 1rem;
+  display: none;
+}
+.to-top.show { display: inline-flex; align-items: center; justify-content: center; }
+
+/* ---------- 深色模式（轻复古夜航） ---------- */
+html[data-theme="dark"] {
+  --cream: #2B2118;
+  --paper: #3A2C1F;
+  --ink: #EFE3CE;
+  --ink-soft: #B7A488;
+  --rust: #C97B57;
+  --rust-deep: #8F4E33;
+  --mustard-light: #4A3A26;
+  --sage: #9BAA8F;
+  --line: #4E4030;
+  --card-border: #544635;
+  --hard-shadow: 3px 4px 0 rgba(0, 0, 0, .18);
+  --hard-shadow-deep: 3px 4px 0 rgba(0, 0, 0, .3);
+}
+html[data-theme="dark"] body { background: #241B13; }
+html[data-theme="dark"] body::before { opacity: .06; }
+html[data-theme="dark"] .empty { background: #33271A; }
+html[data-theme="dark"] .day.has { background: var(--mustard-light); }
+html[data-theme="dark"] .day.has.today { background: var(--rust); }
+
 /* 批注行内编辑 */
 .note-edit {
   margin-top: 0;
