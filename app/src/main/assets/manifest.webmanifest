@@ -1,0 +1,25 @@
+{
+  "name": "拾光手账",
+  "short_name": "拾光手账",
+  "description": "只有当天可以修改的日记，过去只能批注",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F5EDDC",
+  "theme_color": "#B45A3C",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
