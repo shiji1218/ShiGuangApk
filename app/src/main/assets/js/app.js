@@ -3,11 +3,55 @@
   'use strict';
 
   /* ---------- 素材 ---------- */
-  const MOODS = ['😊', '🥰', '😌', '😐', '😢', '😠', '😴'];
-  const WEATHERS = ['☀️', '⛅', '🌧️', '⛈️', '❄️', '🌫️'];
   const TAPE_COLORS = ['#F2D591', '#E8B4A0', '#BFD7D3', '#CDB4DB', '#F6DDD0'];
   const NOTE_COLORS = ['#FDF3D8', '#FDE4DC', '#E7EFDF', '#E3EEF2'];
   const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
+
+  /* 心情 / 天气：复古线性图案（与全局图标同一笔触） */
+  const MOOD_LABELS = ['开心', '心动', '平静', '一般', '难过', '生气', '疲惫'];
+  const WEATHER_LABELS = ['晴', '多云', '雨', '雷雨', '雪', '雾'];
+
+  const MOOD_ICONS = [
+    // 开心
+    '<circle cx="12" cy="12" r="9"/><path d="M8.5 14a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01M15 9.5h.01"/>',
+    // 心动（桃心眼）
+    '<circle cx="12" cy="12" r="9"/><path d="M9.4 8.2c-.8-1.6-3-.9-3 .7 0 1.2 1.6 2.3 3 3.1 1.4-.8 3-1.9 3-3.1 0-1.6-2.2-2.3-3-.7z"/><path d="M14.6 8.2c-.8-1.6-3-.9-3 .7 0 1.2 1.6 2.3 3 3.1 1.4-.8 3-1.9 3-3.1 0-1.6-2.2-2.3-3-.7z"/><path d="M9.6 16a3.6 3.6 0 0 0 4.8 0"/>',
+    // 平静（闭眼浅笑）
+    '<circle cx="12" cy="12" r="9"/><path d="M8.5 10.5c.5-.8 1.5-.8 2 0M13.5 10.5c.5-.8 1.5-.8 2 0"/><path d="M9.5 15c1.5 1.2 3.5 1.2 5 0"/>',
+    // 一般（平嘴）
+    '<circle cx="12" cy="12" r="9"/><path d="M9 9.5h.01M15 9.5h.01"/><path d="M9 15.2h6"/>',
+    // 难过（垂嘴角+泪滴）
+    '<circle cx="12" cy="12" r="9"/><path d="M9 9.5h.01M15 9.5h.01"/><path d="M9.5 16a4.2 4.2 0 0 1 5 0"/><path d="M17 13.8c.9 1.1.9 2.4 0 2.9-.9-.5-.9-1.8 0-2.9z"/>',
+    // 生气（皱眉）
+    '<circle cx="12" cy="12" r="9"/><path d="M7.8 8.2l3.2 1.6M16.2 8.2l-3.2 1.6"/><path d="M9 10.8h.01M15 10.8h.01"/><path d="M9.5 16a4.2 4.2 0 0 1 5 0"/>',
+    // 疲惫（眯眼+汗滴）
+    '<circle cx="12" cy="12" r="9"/><path d="M8 10c.7.8 1.7.8 2.4 0M13.6 10c.7.8 1.7.8 2.4 0"/><path d="M10.5 15.5a2.2 2.2 0 0 0 3 0"/><path d="M17.6 5c.9 1.1.9 2.4 0 2.9-.9-.5-.9-1.8 0-2.9z" fill="currentColor" stroke="none"/>'
+  ];
+
+  const WEATHER_ICONS = [
+    // 晴
+    '<circle cx="12" cy="12" r="4.5"/><path d="M12 3.2v1.9M12 18.9v1.9M3.2 12h1.9M18.9 12h1.9M5.8 5.8l1.3 1.3M16.9 16.9l1.3 1.3M18.2 5.8l-1.3 1.3M7.1 16.9l-1.3 1.3"/>',
+    // 多云（日掩云后）
+    '<circle cx="8.5" cy="8" r="3.2"/><path d="M8.5 2.8v1.3M2.8 8h1.3M4.4 3.9l.9.9"/><path d="M7.2 18h9.6a3.1 3.1 0 0 0 .2-6.2 4.6 4.6 0 0 0-9-.9A2.9 2.9 0 0 0 7.2 18z"/>',
+    // 雨
+    '<path d="M7.5 13.5h9a3 3 0 0 0 .2-6 4.4 4.4 0 0 0-8.6-.8A2.8 2.8 0 0 0 7.5 13.5z"/><path d="M9 16l-.9 2.3M13 16l-.9 2.3M17 16l-.9 2.3"/>',
+    // 雷雨
+    '<path d="M7.5 13.5h9a3 3 0 0 0 .2-6 4.4 4.4 0 0 0-8.6-.8A2.8 2.8 0 0 0 7.5 13.5z"/><path d="M13.2 15.2l-2.5 4h3l-1.9 3.6"/>',
+    // 雪
+    '<path d="M7.5 13.5h9a3 3 0 0 0 .2-6 4.4 4.4 0 0 0-8.6-.8A2.8 2.8 0 0 0 7.5 13.5z"/><path d="M9 17h.01M12.5 19h.01M15.5 17h.01"/>',
+    // 雾
+    '<path d="M4 8.5h14M6.5 12h13.5M4 15.5h12M7 19h12"/>'
+  ];
+
+  function moodIcon(i, size = 18) {
+    const p = MOOD_ICONS[i];
+    return p ? `<svg class="ri" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>` : '';
+  }
+
+  function weatherIcon(i, size = 18) {
+    const p = WEATHER_ICONS[i];
+    return p ? `<svg class="ri" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>` : '';
+  }
 
   const $app = document.getElementById('app');
   const $toast = document.getElementById('toast');
@@ -304,7 +348,7 @@
         <div class="row">
           <div class="date">${fmtDateCn(entry.date)}<span class="time">${fmtClockShort(entry.createdAt)}</span></div>
           ${isToday ? '<span class="stamp green">今天</span>' : ''}
-          <div class="mw">${moodList(entry).map(i => MOODS[i] || '').join('')} ${WEATHERS[entry.weather] || ''}</div>
+          <div class="mw">${moodList(entry).map(i => moodIcon(i, 17)).join('')} ${weatherIcon(entry.weather, 17)}</div>
         </div>
         ${entry.title ? `<div class="title">${esc(entry.title)}</div>` : ''}
         <div class="preview">${esc(entry.content)}</div>
@@ -503,12 +547,12 @@
     const moodEl = document.getElementById('moodPicker');
     const weatherEl = document.getElementById('weatherPicker');
     if (!moodEl || !weatherEl) return;
-    moodEl.innerHTML = MOODS.map((m, i) =>
+    moodEl.innerHTML = MOOD_ICONS.map((_, i) =>
       `<button class="pick ${state.draftMoods.includes(i) ? 'on' : ''}"
-               data-action="pick-mood" data-index="${i}">${m}</button>`).join('');
-    weatherEl.innerHTML = WEATHERS.map((w, i) =>
+               data-action="pick-mood" data-index="${i}" title="${MOOD_LABELS[i]}">${moodIcon(i, 24)}</button>`).join('');
+    weatherEl.innerHTML = WEATHER_ICONS.map((_, i) =>
       `<button class="pick ${i === state.draft.weather ? 'on' : ''}"
-               data-action="pick-weather" data-index="${i}">${w}</button>`).join('');
+               data-action="pick-weather" data-index="${i}" title="${WEATHER_LABELS[i]}">${weatherIcon(i, 24)}</button>`).join('');
   }
 
   function saveToday() {
@@ -594,7 +638,7 @@
         <article class="card diary-card">
           <span class="tape" style="background:${tapeColor(entry.date)}"></span>
           <div class="row">
-            <div class="mw">${moodList(entry).map(i => MOODS[i] || '').join('')} ${WEATHERS[entry.weather] || ''}</div>
+            <div class="mw">${moodList(entry).map(i => moodIcon(i, 19)).join('')} ${weatherIcon(entry.weather, 19)}</div>
             <div style="flex:1"></div>
             ${isToday
               ? '<span class="stamp green">今天</span>'
@@ -756,7 +800,7 @@
           <span class="tape" style="background:${tapeColor(r.entry.date)}"></span>
           <div class="row">
             <div class="date">${fmtDateCn(r.entry.date)}</div>
-            <div class="mw">${moodList(r.entry).map(i => MOODS[i] || '').join('')} ${WEATHERS[r.entry.weather] || ''}</div>
+            <div class="mw">${moodList(r.entry).map(i => moodIcon(i, 17)).join('')} ${weatherIcon(r.entry.weather, 17)}</div>
           </div>
           ${r.entry.title ? `<div class="title">${highlight(r.entry.title, q)}</div>` : ''}
           <div class="preview">${snippetFor(r, q)}</div>
@@ -917,7 +961,7 @@
         ${Object.keys(moodDist).length
           ? Object.entries(moodDist).sort((a, b) => b[1] - a[1]).map(([i, c]) => `
               <div class="bar-row">
-                <span class="bar-emoji">${MOODS[+i] || ''}</span>
+                <span class="bar-emoji">${moodIcon(+i, 20)}</span>
                 <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c / moodMax * 100)}%"></div></div>
                 <span class="bar-count">${c}</span>
               </div>`).join('')
@@ -926,7 +970,7 @@
         ${Object.keys(weatherDist).length
           ? Object.entries(weatherDist).sort((a, b) => b[1] - a[1]).map(([i, c]) => `
               <div class="bar-row">
-                <span class="bar-emoji">${WEATHERS[+i] || ''}</span>
+                <span class="bar-emoji">${weatherIcon(+i, 20)}</span>
                 <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c / weatherMax * 100)}%"></div></div>
                 <span class="bar-count">${c}</span>
               </div>`).join('')
@@ -987,8 +1031,8 @@
     let lastDate = '';
     for (const e of entries) {
       if (e.date !== lastDate) { out += `\n━━━ ${e.date} ━━━\n`; lastDate = e.date; }
-      const moods = moodList(e).map(i => MOODS[i] || '').join('');
-      out += `\n[${fmtTime(e.createdAt)}] ${moods} ${WEATHERS[e.weather] || ''}${e.place ? ' 📍' + e.place : ''}\n`;
+      const moods = moodList(e).map(i => MOOD_LABELS[i]).filter(Boolean).join('、');
+      out += `\n[${fmtTime(e.createdAt)}] ${moods || '—'} · ${WEATHER_LABELS[e.weather] || '—'}${e.place ? ' · 📍' + e.place : ''}\n`;
       if (e.title) out += e.title + '\n';
       out += e.content + '\n';
       DB.getAnnotations(e.id).forEach(n => {
