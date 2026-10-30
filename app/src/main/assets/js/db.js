@@ -4,6 +4,8 @@ const DB = (() => {
 
   const ENTRIES_KEY = 'shiguang.entries';
   const NOTES_KEY = 'shiguang.annotations';
+  const TAGS_KEY = 'shiguang.tags';
+  const TAG_COLORS = ['#B45A3C', '#7E9078', '#D9A441', '#7B93A6', '#CDB4DB', '#B33B2E', '#8C7B63'];
 
   function read(key, fallback) {
     try {
@@ -80,7 +82,44 @@ const DB = (() => {
      * - 当天 / 过去（补写）：均允许新建，一天可多篇
      * - place：位置（可搜索）；images：图片 id 数组（最多 18）
      */
-    saveNew(date, { title, content, mood, weather, place, images }) {
+    /** 标签（分组）：自由增删改 */
+    getTags() {
+      return read(TAGS_KEY, []).sort((a, b) => a.createdAt - b.createdAt);
+    },
+
+    addTag(name) {
+      const trimmed = (name || '').trim();
+      if (!trimmed) return null;
+      const tags = read(TAGS_KEY, []);
+      const existing = tags.find(t => t.name === trimmed);
+      if (existing) return existing.id;
+      const tag = {
+        id: 't' + Date.now() + Math.random().toString(36).slice(2, 5),
+        name: trimmed,
+        color: TAG_COLORS[tags.length % TAG_COLORS.length],
+        createdAt: Date.now()
+      };
+      tags.push(tag);
+      write(TAGS_KEY, tags);
+      return tag.id;
+    },
+
+    renameTag(id, name) {
+      const trimmed = (name || '').trim();
+      if (!trimmed) return;
+      const tags = read(TAGS_KEY, []);
+      const t = tags.find(x => x.id === id);
+      if (t) { t.name = trimmed; write(TAGS_KEY, tags); }
+    },
+
+    /** 删除标签并从所有日记上摘除（日记本身不受影响） */
+    deleteTag(id) {
+      write(TAGS_KEY, read(TAGS_KEY, []).filter(t => t.id !== id));
+      write(ENTRIES_KEY, read(ENTRIES_KEY, []).map(e =>
+        e.tags ? { ...e, tags: e.tags.filter(t => t !== id) } : e));
+    },
+
+    saveNew(date, { title, content, mood, weather, place, images, tags }) {
       const today = this.todayStr();
       if (date > today) return null;
       const entries = read(ENTRIES_KEY, []);
@@ -93,6 +132,7 @@ const DB = (() => {
         mood, weather,
         place: (place || '').trim(),
         images: images || [],
+        tags: tags || [],
         createdAt: now, updatedAt: now
       });
       write(ENTRIES_KEY, entries);
@@ -103,7 +143,7 @@ const DB = (() => {
      * 修改日记：仅「今天」的日记允许修改；
      * 历史日记已封存——不做任何改动，原样返回其 id。
      */
-    updateEntry(id, { title, content, mood, weather, place, images }) {
+    updateEntry(id, { title, content, mood, weather, place, images, tags }) {
       const entries = read(ENTRIES_KEY, []);
       const e = entries.find(x => x.id === id);
       if (!e) return null;
@@ -114,6 +154,7 @@ const DB = (() => {
         mood, weather,
         place: (place || '').trim(),
         images: images || [],
+        tags: tags || [],
         updatedAt: Date.now()
       });
       write(ENTRIES_KEY, entries);
@@ -198,12 +239,17 @@ const DB = (() => {
       const terms = keyword.split('+').map(t => t.trim().toLowerCase()).filter(Boolean);
       if (!terms.length) return [];
 
+      const tagMap = {};
+      this.getTags().forEach(t => { tagMap[t.id] = t.name; });
+
       return this.getEntries().map(entry => {
         const notes = this.getAnnotations(entry.id);
+        const tagNames = (entry.tags || []).map(id => tagMap[id] || '').join(' ');
         const entryHay = [
           entry.title || '',
           entry.content || '',
-          entry.place || ''
+          entry.place || '',
+          tagNames
         ].join('\n').toLowerCase();
         const notesHay = notes.map(n => n.content.toLowerCase());
 
@@ -223,12 +269,16 @@ const DB = (() => {
     },
 
     /** 导出全部数据（JSON 字符串），用于备份 */
-    exportAll() {
+    /** 导出全部数据（v2：含图片 dataURL 与标签） */
+    async exportAll() {
+      const imgs = await IMG.exportDataUrls();
       return JSON.stringify({
-        version: 1,
+        version: 2,
         exportedAt: Date.now(),
         entries: read(ENTRIES_KEY, []),
-        annotations: read(NOTES_KEY, [])
+        annotations: read(NOTES_KEY, []),
+        tags: read(TAGS_KEY, []),
+        images: imgs
       }, null, 2);
     },
 
@@ -238,6 +288,7 @@ const DB = (() => {
       if (!Array.isArray(data.entries)) throw new Error('格式不正确');
       write(ENTRIES_KEY, data.entries);
       write(NOTES_KEY, Array.isArray(data.annotations) ? data.annotations : []);
+      write(TAGS_KEY, Array.isArray(data.tags) ? data.tags : []);
       if (Array.isArray(data.images)) {
         for (const img of data.images) {
           if (img && img.id && img.data) {

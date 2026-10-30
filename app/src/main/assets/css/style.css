@@ -623,6 +623,39 @@ main { padding: 0 1.25rem 1.25rem; }
 }
 .to-top.show { display: inline-flex; align-items: center; justify-content: center; }
 
+/* ---------- 标签 ---------- */
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.tag-row.filter { margin-bottom: 0.5rem; }
+.tag-chip {
+  --tagc: var(--rust);
+  padding: 0.2rem 0.625rem;
+  font-size: 0.75rem;
+  color: var(--tagc);
+  border: 1.5px solid var(--tagc);
+  border-radius: 1rem;
+  background: var(--paper);
+  opacity: .85;
+  transition: background .15s, color .15s;
+}
+.tag-chip.on {
+  background: var(--tagc);
+  color: #FFF6E8;
+  opacity: 1;
+  font-weight: 700;
+}
+.tag-chip.static { cursor: default; }
+.tag-dot {
+  display: inline-block;
+  width: 0.6rem; height: 0.6rem;
+  border-radius: 50%;
+  margin-right: 0.3rem;
+  vertical-align: middle;
+}
+
 /* ---------- 深色模式（轻复古夜航） ---------- */
 html[data-theme="dark"] {
   --cream: #2B2118;

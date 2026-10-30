@@ -181,6 +181,8 @@
     isBackfill: false,                  // 是否补写历史日记
     editingNote: null,                  // 正在编辑的批注 id
     editorImages: [],                   // 编辑页当前日记的图片 id（≤18）
+    editorTags: [],                     // 编辑页当前日记的标签 id
+    tagFilter: '',                      // 主页列表的标签筛选
     noteImages: []                      // 正在编写/编辑的批注图片 id（≤18）
   };
 
@@ -205,6 +207,9 @@
     const counts = DB.annotationCountMap();
     const today = DB.todayStr();
     const isCal = state.homeView === 'calendar';
+    const filteredEntries = state.tagFilter
+      ? entries.filter(e => (e.tags || []).includes(state.tagFilter))
+      : entries;
 
     $app.innerHTML = `
       <header class="topbar">
@@ -226,11 +231,14 @@
         ${isCal
           ? calendarHtml(entries)
           : (entries.length
-              ? `<div class="list-scroll">
-                  ${entries.slice(0, LIST_LIMIT).map(e => cardHtml(e, counts[e.id] || 0, e.date === today)).join('')}
-                  ${entries.length > LIST_LIMIT
+              ? `${tagFilterHtml()}
+                <div class="list-scroll">
+                  ${filteredEntries.slice(0, LIST_LIMIT).map(e => cardHtml(e, counts[e.id] || 0, e.date === today)).join('')}
+                  ${filteredEntries.length > LIST_LIMIT
                     ? `<div class="hint pad" style="text-align:center;margin-top:0.75rem">已显示最近 ${LIST_LIMIT} 篇 · 更早的手账请用月历或 🔍 搜索查看</div>`
-                    : ''}
+                    : (state.tagFilter && !filteredEntries.length
+                        ? '<div class="hint pad" style="text-align:center;margin-top:0.75rem">该标签下还没有日记</div>'
+                        : '')}
                 </div>`
               : emptyHtml())}
         <div class="bottom-space"></div>
@@ -300,6 +308,7 @@
         </div>
         ${entry.title ? `<div class="title">${esc(entry.title)}</div>` : ''}
         <div class="preview">${esc(entry.content)}</div>
+        ${(entry.tags || []).length ? `<div class="notes-count">${tagNamesText(entry)}</div>` : ''}
         ${metaBitsHtml(entry, noteCount)}
       </article>`;
   }
@@ -311,6 +320,20 @@
     if (entry.images && entry.images.length) bits.push('📷 ' + entry.images.length);
     if (entry.place) bits.push('📍 ' + esc(entry.place));
     return bits.length ? `<div class="notes-count">${bits.join('　')}</div>` : '';
+  }
+
+  /** 主页标签筛选行 */
+  function tagFilterHtml() {
+    const tags = DB.getTags();
+    if (!tags.length) return '';
+    return `<div class="tag-row filter">
+      <button class="tag-chip ${!state.tagFilter ? 'on' : ''}"
+              data-action="tag-filter" data-id="">全部</button>
+      ${tags.map(t => `
+        <button class="tag-chip ${state.tagFilter === t.id ? 'on' : ''}"
+                data-action="tag-filter" data-id="${t.id}"
+                style="--tagc:${t.color}"># ${esc(t.name)}</button>`).join('')}
+    </div>`;
   }
 
   function emptyHtml() {
@@ -357,6 +380,7 @@
     state.draftMoods = moodList(existing).slice();
     state.draft.weather = existing ? existing.weather : 0;
     state.editorImages = existing ? (existing.images || []).slice() : [];
+    state.editorTags = existing ? (existing.tags || []).slice() : [];
 
     const d = new Date(targetDate + 'T00:00:00');
     const weekday = '星期' + '日一二三四五六'[d.getDay()];
@@ -381,6 +405,8 @@
         <div class="label">📍 位置（可选，可被搜索）</div>
         <input id="placeInput" class="input" placeholder="在哪里？"
                value="${esc(existing && existing.place || '')}">
+        <div class="label">标签（可多选）</div>
+        <div class="tag-row" id="tagRow"></div>
         <div class="label">图片（最多 ${IMG.LIMIT} 张）</div>
         <div class="img-strip" id="imgStrip"></div>
         <input type="file" id="imgInput" accept="image/*" multiple hidden>
@@ -390,6 +416,7 @@
       </main>
     `;
     renderPickers();
+    renderEditorTags();
     renderEditorImages();
     document.getElementById('imgInput').addEventListener('change', async ev => {
       const files = Array.from(ev.target.files || []);
@@ -424,6 +451,39 @@
   async function renderEditorImages() {
     const strip = document.getElementById('imgStrip');
     if (strip) strip.innerHTML = await stripHtml(state.editorImages, 'remove-img', 'pick-img');
+  }
+
+  /** 编辑页标签选择 */
+  async function renderEditorTags() {
+    const row = document.getElementById('tagRow');
+    if (!row) return;
+    const tags = DB.getTags();
+    if (!tags.length) {
+      row.innerHTML = '<div class="hint">还没有标签，可在「设置 → 标签管理」创建</div>';
+      return;
+    }
+    row.innerHTML = tags.map(t => `
+      <button class="tag-chip ${state.editorTags.includes(t.id) ? 'on' : ''}"
+              data-action="toggle-editor-tag" data-id="${t.id}"
+              style="--tagc:${t.color}"># ${esc(t.name)}</button>`).join('');
+  }
+
+  /** 只读标签行（详情页） */
+  function tagChipsRow(ids) {
+    const tags = DB.getTags();
+    const chips = ids.map(id => {
+      const t = tags.find(x => x.id === id);
+      return t ? `<span class="tag-chip static" style="--tagc:${t.color}"># ${esc(t.name)}</span>` : '';
+    }).filter(Boolean).join('');
+    return chips ? `<div class="tag-row">${chips}</div>` : '';
+  }
+
+  /** 卡片小字：#标签名 */
+  function tagNamesText(entry) {
+    const tags = DB.getTags();
+    return (entry.tags || [])
+      .map(id => { const t = tags.find(x => x.id === id); return t ? '#' + t.name : ''; })
+      .filter(Boolean).join(' ');
   }
 
   async function renderNoteImages() {
@@ -461,7 +521,8 @@
       mood: state.draftMoods.slice(),
       weather: state.draft.weather,
       place: place ? place.value : '',
-      images: state.editorImages.slice()
+      images: state.editorImages.slice(),
+      tags: state.editorTags.slice()
     };
     const id = state.editId
       ? DB.updateEntry(state.editId, payload)
@@ -540,6 +601,7 @@
               : '<span class="stamp">已封存</span>'}
           </div>
           ${entry.title ? `<div class="title big">${esc(entry.title)}</div>` : ''}
+          ${(entry.tags || []).length ? tagChipsRow(entry.tags) : ''}
           ${entry.place ? `<div class="place">📍 ${esc(entry.place)}</div>` : ''}
           <div class="content-full">${esc(entry.content)}</div>
           ${(entry.images || []).length ? '<div class="img-grid" id="detailImgs"></div>' : ''}
@@ -730,6 +792,16 @@
           <button class="ghost-btn" data-action="export-text">${icon('down', 16)}<span>导出纯文本长文</span></button>
         </article>
 
+        <div class="section-title pad">标签管理</div>
+        <article class="card diary-card">
+          <div id="tagManageList">${tagManageHtml()}</div>
+          <div class="set-row" style="margin-top:0.5rem">
+            <input id="newTagInput" class="input" placeholder="新标签名称，如：工作" style="flex:1;margin-top:0">
+            <button class="mini-btn" data-action="add-tag">添加</button>
+          </div>
+          <div class="hint">标签可自由创建、改名、删除；删除会从所有日记上摘除，日记本身不受影响。</div>
+        </article>
+
         <div class="section-title pad">偏好</div>
         <article class="card diary-card">
           <div class="set-row">
@@ -774,6 +846,27 @@
       localStorage.setItem('shiguang.reminder', JSON.stringify(r));
       if (r.enabled) { applyReminder(); toast(`提醒时间已改为 ${r.time}`); }
     });
+    const newTagInput = document.getElementById('newTagInput');
+    newTagInput.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter') {
+        const name = newTagInput.value;
+        if (!name.trim()) { toast('先输入标签名称'); return; }
+        DB.addTag(name);
+        toast('标签已添加 🏷');
+        renderSettings();
+      }
+    });
+  }
+
+  function tagManageHtml() {
+    const tags = DB.getTags();
+    if (!tags.length) return '<div class="hint">还没有标签，在下方添加第一个吧～</div>';
+    return tags.map(t => `
+      <div class="set-row">
+        <span><span class="tag-dot" style="background:${t.color}"></span># ${esc(t.name)}</span>
+        <button class="mini-btn ghost" data-action="rename-tag" data-id="${t.id}">改名</button>
+        <button class="mini-btn ghost" data-action="delete-tag" data-id="${t.id}">删除</button>
+      </div>`).join('');
   }
 
   /* ---------- 写作统计 ---------- */
@@ -1013,6 +1106,42 @@
         break;
       case 'edit-entry':    location.hash = '#/edit/' + encodeURIComponent(el.dataset.id); break;
       case 'go-backfill':   location.hash = '#/write/' + el.dataset.date; break;
+      case 'add-tag': {
+        const inp = document.getElementById('newTagInput');
+        const name = inp ? inp.value : '';
+        if (!name.trim()) { toast('先输入标签名称'); return; }
+        DB.addTag(name);
+        toast('标签已添加 🏷');
+        renderSettings();
+        break;
+      }
+      case 'rename-tag': {
+        const t = DB.getTags().find(x => x.id === el.dataset.id);
+        const name = t ? prompt('修改标签名', t.name) : null;
+        if (name && name.trim()) {
+          DB.renameTag(el.dataset.id, name);
+          renderSettings();
+        }
+        break;
+      }
+      case 'delete-tag':
+        if (confirm('删除该标签？会从所有日记上摘除（日记本身不受影响）。')) {
+          DB.deleteTag(el.dataset.id);
+          renderSettings();
+        }
+        break;
+      case 'toggle-editor-tag': {
+        const tid = el.dataset.id;
+        const pos = state.editorTags.indexOf(tid);
+        if (pos >= 0) state.editorTags.splice(pos, 1);
+        else state.editorTags.push(tid);
+        renderEditorTags();
+        break;
+      }
+      case 'tag-filter':
+        state.tagFilter = state.tagFilter === el.dataset.id ? '' : el.dataset.id;
+        renderHome();
+        break;
       case 'edit-note': {
         const note = DB.getAnnotation(el.dataset.id);
         state.editingNote = el.dataset.id;
