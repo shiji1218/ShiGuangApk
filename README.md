@@ -44,3 +44,7 @@ H5 页面源码在 `app/src/main/assets/`，改完后提交推送，Actions 会�
 | 壳 | Android WebView（Java，minSdk 26 / targetSdk 35） |
 | 页面 | 原生 HTML / CSS / JS，无框架无构建 |
 | CI | GitHub Actions（Temurin 17 + Gradle 8.9 + AGP 8.5.2） |
+
+## 图标版权
+
+心情 / 天气图案来自 [OpenMoji](https://openmoji.org/)（CC BY-SA 4.0），已内嵌于 `assets/icons/emoji/`。

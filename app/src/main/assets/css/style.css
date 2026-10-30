@@ -376,10 +376,14 @@ main { padding: 0 1.25rem 1.25rem; }
   display: inline-flex; align-items: center; justify-content: center;
   transition: background .15s, box-shadow .15s;
 }
-.pick .ri { color: var(--ink); }
-.pick.on .ri { color: var(--rust); }
-.mw .ri { vertical-align: -0.2em; }
-.bar-emoji .ri { color: var(--rust); vertical-align: middle; }
+.emoji-ico {
+  vertical-align: -0.25em;
+  pointer-events: none;
+  user-select: none;
+}
+.pick .emoji-ico { vertical-align: middle; }
+.bar-emoji .emoji-ico { vertical-align: middle; }
+html[data-theme="dark"] .emoji-ico { filter: brightness(1.05); }
 .pick.on {
   background: var(--mustard-light);
   box-shadow: inset 0 0 0 1.5px var(--rust);

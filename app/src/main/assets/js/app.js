@@ -11,46 +11,18 @@
   const MOOD_LABELS = ['开心', '心动', '平静', '一般', '难过', '生气', '疲惫'];
   const WEATHER_LABELS = ['晴', '多云', '雨', '雷雨', '雪', '雾'];
 
-  const MOOD_ICONS = [
-    // 开心
-    '<circle cx="12" cy="12" r="9"/><path d="M8.5 14a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01M15 9.5h.01"/>',
-    // 心动（桃心眼）
-    '<circle cx="12" cy="12" r="9"/><path d="M9.4 8.2c-.8-1.6-3-.9-3 .7 0 1.2 1.6 2.3 3 3.1 1.4-.8 3-1.9 3-3.1 0-1.6-2.2-2.3-3-.7z"/><path d="M14.6 8.2c-.8-1.6-3-.9-3 .7 0 1.2 1.6 2.3 3 3.1 1.4-.8 3-1.9 3-3.1 0-1.6-2.2-2.3-3-.7z"/><path d="M9.6 16a3.6 3.6 0 0 0 4.8 0"/>',
-    // 平静（闭眼浅笑）
-    '<circle cx="12" cy="12" r="9"/><path d="M8.5 10.5c.5-.8 1.5-.8 2 0M13.5 10.5c.5-.8 1.5-.8 2 0"/><path d="M9.5 15c1.5 1.2 3.5 1.2 5 0"/>',
-    // 一般（平嘴）
-    '<circle cx="12" cy="12" r="9"/><path d="M9 9.5h.01M15 9.5h.01"/><path d="M9 15.2h6"/>',
-    // 难过（垂嘴角+泪滴）
-    '<circle cx="12" cy="12" r="9"/><path d="M9 9.5h.01M15 9.5h.01"/><path d="M9.5 16a4.2 4.2 0 0 1 5 0"/><path d="M17 13.8c.9 1.1.9 2.4 0 2.9-.9-.5-.9-1.8 0-2.9z"/>',
-    // 生气（皱眉）
-    '<circle cx="12" cy="12" r="9"/><path d="M7.8 8.2l3.2 1.6M16.2 8.2l-3.2 1.6"/><path d="M9 10.8h.01M15 10.8h.01"/><path d="M9.5 16a4.2 4.2 0 0 1 5 0"/>',
-    // 疲惫（眯眼+汗滴）
-    '<circle cx="12" cy="12" r="9"/><path d="M8 10c.7.8 1.7.8 2.4 0M13.6 10c.7.8 1.7.8 2.4 0"/><path d="M10.5 15.5a2.2 2.2 0 0 0 3 0"/><path d="M17.6 5c.9 1.1.9 2.4 0 2.9-.9-.5-.9-1.8 0-2.9z" fill="currentColor" stroke="none"/>'
-  ];
-
-  const WEATHER_ICONS = [
-    // 晴
-    '<circle cx="12" cy="12" r="4.5"/><path d="M12 3.2v1.9M12 18.9v1.9M3.2 12h1.9M18.9 12h1.9M5.8 5.8l1.3 1.3M16.9 16.9l1.3 1.3M18.2 5.8l-1.3 1.3M7.1 16.9l-1.3 1.3"/>',
-    // 多云（日掩云后）
-    '<circle cx="8.5" cy="8" r="3.2"/><path d="M8.5 2.8v1.3M2.8 8h1.3M4.4 3.9l.9.9"/><path d="M7.2 18h9.6a3.1 3.1 0 0 0 .2-6.2 4.6 4.6 0 0 0-9-.9A2.9 2.9 0 0 0 7.2 18z"/>',
-    // 雨
-    '<path d="M7.5 13.5h9a3 3 0 0 0 .2-6 4.4 4.4 0 0 0-8.6-.8A2.8 2.8 0 0 0 7.5 13.5z"/><path d="M9 16l-.9 2.3M13 16l-.9 2.3M17 16l-.9 2.3"/>',
-    // 雷雨
-    '<path d="M7.5 13.5h9a3 3 0 0 0 .2-6 4.4 4.4 0 0 0-8.6-.8A2.8 2.8 0 0 0 7.5 13.5z"/><path d="M13.2 15.2l-2.5 4h3l-1.9 3.6"/>',
-    // 雪
-    '<path d="M7.5 13.5h9a3 3 0 0 0 .2-6 4.4 4.4 0 0 0-8.6-.8A2.8 2.8 0 0 0 7.5 13.5z"/><path d="M9 17h.01M12.5 19h.01M15.5 17h.01"/>',
-    // 雾
-    '<path d="M4 8.5h14M6.5 12h13.5M4 15.5h12M7 19h12"/>'
-  ];
+  /* OpenMoji（CC BY-SA 4.0）手绘风图案文件名 */
+  const MOOD_FILES = ['1F60A', '1F970', '1F60C', '1F610', '1F622', '1F620', '1F634'];
+  const WEATHER_FILES = ['2600', '26C5', '1F327', '26C8', '1F328', '1F32B'];
 
   function moodIcon(i, size = 18) {
-    const p = MOOD_ICONS[i];
-    return p ? `<svg class="ri" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>` : '';
+    const f = MOOD_FILES[i];
+    return f ? `<img class="emoji-ico" src="icons/emoji/${f}.svg" style="width:${size}px;height:${size}px" alt="${MOOD_LABELS[i] || ''}" draggable="false">` : '';
   }
 
   function weatherIcon(i, size = 18) {
-    const p = WEATHER_ICONS[i];
-    return p ? `<svg class="ri" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>` : '';
+    const f = WEATHER_FILES[i];
+    return f ? `<img class="emoji-ico" src="icons/emoji/${f}.svg" style="width:${size}px;height:${size}px" alt="${WEATHER_LABELS[i] || ''}" draggable="false">` : '';
   }
 
   const $app = document.getElementById('app');
